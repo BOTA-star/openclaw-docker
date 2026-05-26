@@ -1,0 +1,29 @@
+# OpenClaw runtime
+workspace/**/sessions/
+workspace/**/logs/
+workspace/**/credentials/
+workspace/**/devices/
+workspace/**/identity/
+
+# runtime state
+workspace/plugin-skills/
+workspace/plugins/
+workspace/browser/
+workspace/telegram/
+
+# backups
+*.bak
+*.bak.*
+*.last-good
+
+# OS / system
+.DS_Store
+Thumbs.db
+
+# node
+node_modules/
+
+# env
+.env
+
+/workspace

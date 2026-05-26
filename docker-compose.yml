@@ -1,0 +1,24 @@
+services:
+  openclaw:
+    build: .   
+    container_name: openclaw
+
+    ports:
+      - "18789:18789"
+
+    volumes:
+      - ./workspace:/root/.openclaw
+
+    environment:
+      OPENCLAW_GATEWAY_TOKEN: 
+      NODE_ENV: production
+      OPENCLAW_TELEGRAM_OWNER: 
+      OPENCLAW_GATEWAY_BIND: 0.0.0.0
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+    command: openclaw gateway --verbose
+    restart: unless-stopped
+
