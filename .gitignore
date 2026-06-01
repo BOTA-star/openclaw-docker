@@ -1,0 +1,29 @@
+workspace/
+node_modules/
+**/node_modules/
+
+# backups
+*.bak
+*.bak.*
+*.last-good
+
+# OS / system
+.DS_Store
+Thumbs.db
+
+# node
+node_modules/
+
+# env
+.env
+.env.*
+!.env.example
+
+backups/
+logs/
+credentials/
+
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

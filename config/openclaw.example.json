@@ -1,0 +1,101 @@
+{
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "port": 18789,
+    "bind": "lan",
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789"
+      ]
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+      "groups": {
+        "*": {
+          "requireMention": true
+        }
+      }
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": true,
+    "text": true,
+    "ownerAllowFrom": [
+      "${OPENCLAW_TELEGRAM_OWNER}"
+    ]
+  },
+  "skills": {
+    "load": {
+      "extraDirs": [
+        "/root/.openclaw/workspace/skills"
+      ],
+      "watch": true
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.5.27",
+    "lastTouchedAt": "2026-06-01T02:18:57.969Z"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/free"
+      },
+      "models": {
+        "openrouter/free": {
+          "alias": "OpenRouter Free"
+        }
+      },
+      "workspace": "/root/.openclaw/workspace"
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "profile": "coding",
+    "web": {
+      "search": {
+        "provider": "duckduckgo",
+        "enabled": true
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "openrouter": {
+        "enabled": true
+      },
+      "duckduckgo": {
+        "enabled": true
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "openrouter:default": {
+        "provider": "openrouter",
+        "mode": "api_key"
+      }
+    }
+  },
+  "wizard": {
+    "lastRunAt": "2026-06-01T02:18:57.916Z",
+    "lastRunVersion": "2026.5.27",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  }
+}

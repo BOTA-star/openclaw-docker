@@ -1,0 +1,8 @@
+{
+  "name": "mail",
+  "description": "Search and summarize Gmail emails",
+  "command": "/mail",
+  "entryPoint": "index.js",
+  "args": true,
+  "runtime": "node"
+}

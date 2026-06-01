@@ -1,0 +1,21 @@
+services:
+  openclaw:
+    build: .
+    container_name: openclaw
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:18789:18789"
+    volumes:
+      - ./config/openclaw.example.json:/root/.openclaw/openclaw.json
+      - ./workspace:/root/.openclaw/workspace
+      - ./config/SOUL.md:/root/.openclaw/workspace/SOUL.md
+      - ./config/TOOLS.md:/root/.openclaw/workspace/TOOLS.md
+      - ./skills:/root/.openclaw/workspace/skills
+    environment:
+      TELEGRAM_POLLING: "true"
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1"
+      NODE_ENV: "production"
+      ALLOW_INSECURE_TLS: "true"
+    command: openclaw gateway
+    restart: unless-stopped
