@@ -13,9 +13,32 @@ services:
       - ./config/TOOLS.md:/root/.openclaw/workspace/TOOLS.md
       - ./skills:/root/.openclaw/workspace/skills
     environment:
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OPENCLAW_TELEGRAM_OWNER: ${OPENCLAW_TELEGRAM_OWNER}
       TELEGRAM_POLLING: "true"
-      OPENAI_BASE_URL: "https://openrouter.ai/api/v1"
-      NODE_ENV: "production"
+
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
+      OPENAI_BASE_URL: https://openrouter.ai/api/v1
+
+      OPENCLAW_MODEL: ${OPENCLAW_MODEL}
+
+      OPENCLAW_CONFIG_PATH: /root/.openclaw/workspace/openclaw.json
+      OPENCLAW_WORKSPACE: /root/.openclaw/workspace
+
+      NODE_ENV: production
+      OPENCLAW_GATEWAY_BIND: 0.0.0.0
+      OPENCLAW_GATEWAY_MODE: local
       ALLOW_INSECURE_TLS: "true"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    networks:
+      - openclaw_net
     command: openclaw gateway
     restart: unless-stopped
+
+networks:
+  openclaw_net:
+    driver: bridge
