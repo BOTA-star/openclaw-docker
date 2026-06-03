@@ -22,6 +22,10 @@
     "telegram": {
       "enabled": true,
       "botToken": "${TELEGRAM_BOT_TOKEN}",
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        "${TELEGRAM_ALLOWED_USER_ID}"
+      ],
       "groups": {
         "*": {
           "requireMention": true
