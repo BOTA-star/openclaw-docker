@@ -1,7 +1,8 @@
+---
 name: mail
 description: Execute a local Gmail search script to find, count, and summarize emails by sender, date, unread status, subject, body, or keyword. Use this skill when the user asks to check mail, search email, find emails mentioning a keyword, count CV emails, summarize email, or filter Gmail messages.
 user-invocable: true
---------------------
+---
 
 # Mail Skill
 
@@ -21,7 +22,7 @@ Use this skill when the user asks to:
 
 Always execute this local shell command exactly one time:
 
-cd /root/.openclaw/workspace/skills/mail && node index.js "<FILTER>"
+cd /root/.openclaw-docker/skills/mail && node index.js "<FILTER>"
 
 Replace `<FILTER>` with the compact filter converted from the user request.
 
@@ -76,7 +77,7 @@ User: "Lấy email mới nhất chưa đọc"
 Filter:
 latest unread
 
-User: "Tìm mail từ [abc@gmail.com](mailto:abc@gmail.com) từ ngày 2026-05-18 đến trước ngày 2026-05-25"
+User: "Tìm mail từ abc@gmail.com từ ngày 2026-05-18 đến trước ngày 2026-05-25"
 Filter:
 from:abc@gmail.com since:2026-05-18 before:2026-05-25
 
@@ -108,7 +109,7 @@ You must execute the local script before replying.
 
 Command format:
 
-cd /root/.openclaw/workspace/skills/mail && node index.js "<FILTER>"
+cd /root/.openclaw-docker/skills/mail && node index.js "<FILTER>"
 
 Never claim the email check has been completed unless the command was actually executed.
 

@@ -11,7 +11,8 @@ services:
       - ./workspace:/root/.openclaw/workspace
       - ./config/SOUL.md:/root/.openclaw/workspace/SOUL.md
       - ./config/TOOLS.md:/root/.openclaw/workspace/TOOLS.md
-      - ./skills:/root/.openclaw/workspace/skills
+      - ./skills:/root/.openclaw-docker/skills
+
     environment:
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
@@ -19,12 +20,9 @@ services:
       TELEGRAM_POLLING: "true"
 
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENAI_API_KEY: ${OPENROUTER_API_KEY}
-      OPENAI_BASE_URL: https://openrouter.ai/api/v1
-
       OPENCLAW_MODEL: ${OPENCLAW_MODEL}
 
-      OPENCLAW_CONFIG_PATH: /root/.openclaw/workspace/openclaw.json
+      OPENCLAW_CONFIG_PATH: /root/.openclaw/openclaw.json
       OPENCLAW_WORKSPACE: /root/.openclaw/workspace
 
       NODE_ENV: production

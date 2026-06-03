@@ -40,7 +40,7 @@
   "skills": {
     "load": {
       "extraDirs": [
-        "/root/.openclaw/workspace/skills"
+        "/root/.openclaw-docker/skills/mail"
       ],
       "watch": true
     }
@@ -52,14 +52,14 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openrouter/free"
+        "primary": "openrouter/openrouter/auto"
       },
       "models": {
-        "openrouter/free": {
-          "alias": "OpenRouter Free"
+        "openrouter/openrouter/auto": {
+          "alias": "OpenRouter Auto"
         }
       },
-      "workspace": "/root/.openclaw/workspace"
+      "workspace": "/root/.openclaw-docker/workspace"
     }
   },
   "session": {
