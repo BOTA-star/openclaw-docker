@@ -1,64 +1,200 @@
-# OpenClaw Claude Handover
+# OpenClaw Docker POC
 
-Repo này dùng để bàn giao POC triển khai OpenClaw Gateway bằng Docker, tích hợp kênh Telegram và thử nghiệm skill mail.
+Repo này dùng để chạy thử OpenClaw Gateway bằng Docker, tích hợp Telegram Bot và skill đọc/tóm tắt email từ Gmail.
 
-Mục tiêu của repo là giúp người nhận bàn giao có thể clone source, tạo file môi trường, chạy lại OpenClaw Gateway bằng Docker và kiểm thử skill đã chuẩn bị.
+Mục tiêu: clone repo → tạo file môi trường → chạy Docker → test Telegram + mail skill.
 
-## 1. Trạng thái hiện tại
+## Tính năng chính
 
-Hệ thống hiện đang ở mức POC/Test, chưa phải production-ready.
+* Chạy OpenClaw Gateway bằng Docker
+* Kết nối Telegram Bot
+* Kết nối Gmail qua IMAP
+* Tìm email theo filter: người gửi, ngày, trạng thái chưa đọc, từ khóa, tiêu đề, nội dung
+* Tóm tắt email bằng AI
+* Gửi kết quả về Telegram
+* Hỗ trợ đếm email theo từ khóa, ví dụ số lượng CV gửi về
 
-Đã hoàn thành:
-
-* Triển khai OpenClaw Gateway bằng Docker.
-* Cấu hình gateway chạy qua port `18789`.
-* Cấu hình Telegram bot qua biến môi trường.
-* Cấu hình OpenRouter API qua biến môi trường.
-* Gateway đã khởi động thành công.
-* Telegram polling đã chạy.
-* Skill mail đã chạy thử sau khi cài dependencies.
-
-Cần kiểm tra/phát triển thêm:
-
-* Độ ổn định API/model.
-* Quota hoặc giới hạn từ OpenRouter/API provider.
-* Hoàn thiện thêm security hardening.
-* Hoàn thiện thêm quy trình backup/restore.
-* Kênh Zalo hiện chưa chốt, nên Telegram đang được dùng làm kênh test chính.
-
-## 2. Cấu trúc thư mục
+## Cấu trúc thư mục
 
 ```txt
-openclaw-claude-handover/
+.
 ├─ config/
-│  ├─ openclaw.example.json
-│  ├─ SOUL.md
-│  └─ TOOLS.md
+│  └─ openclaw.example.json
 ├─ docs/
-│  ├─ test-log.md
-│  └─ known-issues.md
 ├─ scripts/
-│  ├─ backup-openclaw.ps1
-│  └─ healthcheck.ps1
 ├─ skills/
 │  └─ mail/
 │     ├─ index.js
 │     ├─ package.json
-│     ├─ package-lock.json
-│     ├─ skill.json
 │     └─ SKILL.md
 ├─ .env.example
-├─ .gitignore
 ├─ docker-compose.yml
 ├─ Dockerfile
-├─ HANDOVER.md
 ├─ README.md
 └─ RUNBOOK.md
 ```
 
-## 3. Các file không được commit
+## Yêu cầu trước khi chạy
 
-Không commit các file/thư mục sau vì có thể chứa token, credentials, log, session hoặc runtime state:
+Cần có:
+
+* Docker Desktop
+* Telegram Bot Token
+* Telegram User ID hoặc Chat ID
+* Gmail App Password
+* API key cho model AI, ví dụ OpenRouter hoặc Google AI Studio/Gemini
+
+## Cài đặt
+
+Clone repo:
+
+```powershell
+git clone https://github.com/BOTA-star/openclaw-docker.git
+cd openclaw-docker
+```
+
+Tạo file môi trường:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Mở file `.env` và điền thông tin thật:
+
+```env
+OPENCLAW_GATEWAY_TOKEN=replace_with_gateway_token
+
+TELEGRAM_BOT_TOKEN=replace_with_telegram_bot_token
+OPENCLAW_TELEGRAM_OWNER=telegram:replace_with_your_telegram_user_id
+TELEGRAM_CHAT_ID=replace_with_your_telegram_chat_id
+
+OPENROUTER_API_KEY=replace_with_openrouter_api_key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=google/gemini-2.5-flash
+OPENROUTER_MAX_TOKENS=700
+
+EMAIL_USER=replace_with_gmail_address
+EMAIL_PASS=replace_with_gmail_app_password
+
+ALLOW_INSECURE_TLS=true
+MAIL_RUN_COOLDOWN_SECONDS=30
+MAIL_SAMPLE_LIMIT=8
+```
+
+Lưu ý: không commit file `.env` lên GitHub.
+
+## Chạy Docker
+
+Build và chạy container:
+
+```powershell
+docker compose up -d --build
+```
+
+Xem log:
+
+```powershell
+docker logs -f openclaw
+```
+
+Dừng container:
+
+```powershell
+docker compose down
+```
+
+## Kiểm tra skill mail
+
+Vào container:
+
+```powershell
+docker exec -it openclaw bash
+```
+
+Di chuyển vào thư mục skill:
+
+```bash
+cd /root/.openclaw/workspace/skills/mail
+```
+
+Cài dependencies nếu cần:
+
+```bash
+npm ci
+```
+
+Test lấy email mới nhất chưa đọc:
+
+```bash
+node index.js "latest unread"
+```
+
+Test tìm email theo từ khóa trong 7 ngày gần nhất:
+
+```bash
+node index.js "Figma newer_than:7d"
+```
+
+Test tìm theo tiêu đề:
+
+```bash
+node index.js "subject:Figma newer_than:7d"
+```
+
+Test tìm trong tiêu đề + nội dung:
+
+```bash
+node index.js "text:Figma newer_than:7d"
+```
+
+Test đếm email có từ khóa CV trong 7 ngày gần nhất:
+
+```bash
+node index.js "count CV newer_than:7d"
+```
+
+## Test trên Telegram
+
+Sau khi bot đã chạy, có thể nhắn trực tiếp:
+
+```txt
+/skill mail Figma newer_than:7d
+```
+
+Hoặc:
+
+```txt
+/skill mail count CV newer_than:7d
+```
+
+Ví dụ câu tự nhiên:
+
+```txt
+Trong vòng 7 ngày gần nhất, có email nào đến hộp thư của tôi đề cập Figma không?
+```
+
+Kết quả sẽ được gửi về Telegram.
+
+## Một số filter hỗ trợ
+
+```txt
+unread
+latest unread
+earliest unread
+from:abc@gmail.com
+since:2026-05-18
+before:2026-05-25
+newer_than:7d
+subject:Figma
+text:Figma
+body:Figma
+count CV newer_than:7d
+count subject:CV newer_than:7d
+```
+
+## Lưu ý bảo mật
+
+Không commit các file hoặc thư mục sau:
 
 ```txt
 .env
@@ -74,175 +210,43 @@ credentials/
 *.sqlite-wal
 ```
 
-## 4. Chuẩn bị file môi trường
+Trước khi bàn giao hoặc public repo, nên tạo lại:
 
-Repo không commit file `.env`. Người nhận bàn giao cần tự tạo file `.env` từ `.env.example`.
+* Telegram Bot Token
+* Gmail App Password
+* AI API Key
+* OpenClaw Gateway Token
 
-Trên Windows PowerShell:
+## Troubleshooting nhanh
+
+Kiểm tra container:
 
 ```powershell
-Copy-Item .env.example .env
+docker ps
 ```
 
-Sau đó mở file `.env` và điền thông tin thật:
+Kiểm tra OpenClaw có nhận skill mail chưa:
+
+```powershell
+docker exec -it openclaw sh -lc "openclaw skills list | grep mail"
+```
+
+Nếu Telegram báo `Unknown skill: mail`, kiểm tra lại:
+
+```txt
+skills/mail/SKILL.md
+config/openclaw.example.json
+docker-compose.yml
+```
+
+Nếu lỗi model/API, kiểm tra lại API key trong `.env`.
+
+Nếu lỗi certificate khi test local, giữ:
 
 ```env
-OPENCLAW_GATEWAY_TOKEN=replace_with_gateway_token
-
-TELEGRAM_BOT_TOKEN=replace_with_telegram_bot_token
-OPENCLAW_TELEGRAM_OWNER=telegram:replace_with_your_telegram_user_id
-TELEGRAM_CHAT_ID=replace_with_your_telegram_chat_id
-
-OPENROUTER_API_KEY=replace_with_openrouter_api_key
-OPENCLAW_MODEL=openai/gemini-2.5-flash
-
-EMAIL_USER=replace_with_email_user
-EMAIL_PASS=replace_with_email_app_password
+ALLOW_INSECURE_TLS=true
 ```
 
-Lưu ý: Không upload hoặc commit file `.env` lên GitHub.
+## Trạng thái
 
-## 5. Kiểm tra Docker Compose
-
-Chạy lệnh:
-
-```powershell
-docker compose config --no-interpolate
-```
-
-Lệnh này giúp kiểm tra cấu hình compose mà không bung giá trị secret thật ra terminal.
-
-Không nên gửi hoặc chụp toàn bộ output của lệnh `docker compose config` nếu trong đó có token/API key thật.
-
-## 6. Chạy OpenClaw Gateway
-
-Build và chạy container:
-
-```powershell
-docker compose up -d --build
-```
-
-Xem log:
-
-```powershell
-docker logs -f openclaw
-```
-
-Log chạy thành công thường có các dòng tương tự:
-
-```txt
-[gateway] starting...
-[gateway] http server listening
-[gateway] ready
-[telegram] starting provider
-[telegram] isolated polling ingress started
-```
-
-Dừng container:
-
-```powershell
-docker compose down
-```
-
-## 7. Truy cập Gateway UI
-
-Gateway được map local tại:
-
-```txt
-http://127.0.0.1:18789
-```
-
-Port trong `docker-compose.yml` đang giới hạn ở `127.0.0.1` để phục vụ môi trường test local.
-
-## 8. Test skill mail
-
-Vào container:
-
-```powershell
-docker exec -it openclaw bash
-```
-
-Di chuyển tới thư mục skill mail:
-
-```bash
-cd /root/.openclaw/workspace/skills/mail
-```
-
-Cài dependencies:
-
-```bash
-npm ci
-```
-
-Nếu `npm ci` lỗi thì dùng:
-
-```bash
-npm install
-```
-
-Chạy skill:
-
-```bash
-node index.js
-```
-
-Lưu ý: Không commit thư mục `node_modules`.
-
-## 9. Một số warning đã ghi nhận
-
-### Gateway binding warning
-
-Có thể xuất hiện warning:
-
-```txt
-Gateway is binding to a non-loopback address
-```
-
-Trong phạm vi POC, warning này chưa phải lỗi nghiêm trọng vì Docker Compose đã giới hạn port host ở `127.0.0.1`.
-
-### Telegram menu text warning
-
-Có thể xuất hiện warning:
-
-```txt
-menu text exceeded...
-```
-
-Đây không phải lỗi nghiêm trọng. OpenClaw tự rút gọn menu command để phù hợp giới hạn payload.
-
-### Browser automation skill warning
-
-Có thể xuất hiện warning liên quan `browser-automation` bị skip do symlink/path escape. Warning này không ảnh hưởng đến phạm vi test hiện tại nếu chỉ kiểm thử Gateway, Telegram và skill mail.
-
-## 10. Backup
-
-Script backup nằm tại:
-
-```txt
-scripts/backup-openclaw.ps1
-```
-
-Chạy backup:
-
-```powershell
-.\scripts\backup-openclaw.ps1
-```
-
-File backup có thể chứa credentials/token nên không được upload lên GitHub.
-
-## 11. Ghi chú bảo mật
-
-Một số token/API key đã từng được dùng trong quá trình test. Trước khi bàn giao chính thức, cần tạo lại các thông tin sau:
-
-* OpenRouter API key.
-* Telegram Bot Token.
-* Gmail App Password.
-* OpenClaw Gateway Token.
-
-Sau khi tạo lại, cập nhật vào file `.env` mới và không commit file này.
-
-## 12. Kết luận
-
-Repo hiện phục vụ mục tiêu bàn giao POC. Người nhận có thể clone repo, tạo `.env`, chạy Docker Compose, kiểm tra Gateway, Telegram polling và test skill mail.
-
-Hệ thống chưa được xác nhận production-ready, cần tiếp tục kiểm thử thêm về bảo mật, quyền truy cập, độ ổn định model/API và quy trình vận hành thực tế.
+Repo hiện phục vụ mục tiêu POC/test nội bộ, chưa phải production-ready.
