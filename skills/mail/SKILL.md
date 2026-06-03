@@ -1,5 +1,3 @@
----
-
 name: mail
 description: Execute a local Gmail search script to find, count, and summarize emails by sender, date, unread status, subject, body, or keyword. Use this skill when the user asks to check mail, search email, find emails mentioning a keyword, count CV emails, summarize email, or filter Gmail messages.
 user-invocable: true
