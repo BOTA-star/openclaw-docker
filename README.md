@@ -62,26 +62,40 @@ Copy-Item .env.example .env
 Mở file `.env` và điền thông tin thật:
 
 ```env
+# OpenClaw Gateway
 OPENCLAW_GATEWAY_TOKEN=replace_with_gateway_token
 
+# Telegram
 TELEGRAM_BOT_TOKEN=replace_with_telegram_bot_token
+TELEGRAM_ALLOWED_USER_ID=replace_with_your_telegram_user_id
 OPENCLAW_TELEGRAM_OWNER=telegram:replace_with_your_telegram_user_id
-TELEGRAM_CHAT_ID=replace_with_your_telegram_chat_id
+TELEGRAM_CHAT_ID=replace_with_telegram_chat_id
 
+# AI Provider - OpenRouter
 OPENROUTER_API_KEY=replace_with_openrouter_api_key
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL=google/gemini-2.5-flash
-OPENROUTER_MAX_TOKENS=700
+OPENAI_API_KEY=replace_with_openrouter_api_key
+OPENAI_BASE_URL=
+OPENROUTER_MODEL=replace_with_your model
 
+# Gmail IMAP
 EMAIL_USER=replace_with_gmail_address
 EMAIL_PASS=replace_with_gmail_app_password
 
+# Local test only
 ALLOW_INSECURE_TLS=true
-MAIL_RUN_COOLDOWN_SECONDS=30
-MAIL_SAMPLE_LIMIT=8
-```
 
-Lưu ý: không commit file `.env` lên GitHub.
+# Optional
+# OPENROUTER_MAX_TOKENS=700
+
+# MAIL_RUN_COOLDOWN_SECONDS=30
+
+# MAIL_SAMPLE_LIMIT=8
+
+# EMAIL_IMAP_HOST=imap.gmail.com
+
+# EMAIL_IMAP_PORT=993
+
+# EMAIL_AUTH_TIMEOUT=20000
 
 ## Chạy Docker
 
@@ -132,19 +146,19 @@ node index.js "latest unread"
 Test tìm email theo từ khóa trong 7 ngày gần nhất:
 
 ```bash
-node index.js "Figma newer_than:7d"
+node index.js "<keyword> newer_than:7d"
 ```
 
 Test tìm theo tiêu đề:
 
 ```bash
-node index.js "subject:Figma newer_than:7d"
+node index.js "subject:<keyword> newer_than:7d"
 ```
 
 Test tìm trong tiêu đề + nội dung:
 
 ```bash
-node index.js "text:Figma newer_than:7d"
+node index.js "text:<keyword> newer_than:7d"
 ```
 
 Test đếm email có từ khóa CV trong 7 ngày gần nhất:
@@ -158,19 +172,19 @@ node index.js "count CV newer_than:7d"
 Sau khi bot đã chạy, có thể nhắn trực tiếp:
 
 ```txt
-/skill mail Figma newer_than:7d
+`/skill mail <keyword> newer_than:7d`
 ```
 
 Hoặc:
 
 ```txt
-/skill mail count CV newer_than:7d
+`/skill mail count CV newer_than:7d`
 ```
 
 Ví dụ câu tự nhiên:
 
 ```txt
-Trong vòng 7 ngày gần nhất, có email nào đến hộp thư của tôi đề cập Figma không?
+Trong vòng 7 ngày gần nhất, có email nào đến hộp thư của tôi đề cập <keyword> không?
 ```
 
 Kết quả sẽ được gửi về Telegram.
