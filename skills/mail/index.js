@@ -8,9 +8,20 @@
  *   node index.js "earliest unread"
  *   node index.js "from:abc@gmail.com since:2026-05-18 before:2026-05-25"
  *
+ * Keyword / subject examples:
+ *   node index.js "Figma since:2026-05-27"
+ *   node index.js "subject:Figma since:2026-05-27"
+ *   node index.js "text:Figma since:2026-05-27"
+ *   node index.js "count subject:CV last:7d"
+ *   node index.js "bao nhiêu CV trong vòng 7 ngày gần nhất"
+ *
  * Default behavior:
  *   - If no filter is provided: lấy email CHƯA ĐỌC MỚI NHẤT
  *   - If multiple emails match: mặc định lấy email MỚI NHẤT
+ *
+ * Stop mechanism:
+ *   - MAIL_RUN_COOLDOWN_SECONDS=30 by default
+ *   - If agent retries too quickly, script exits silently to avoid repeated paid calls
  */
 
 if (String(process.env.ALLOW_INSECURE_TLS || "").toLowerCase() === "true") {
@@ -18,6 +29,9 @@ if (String(process.env.ALLOW_INSECURE_TLS || "").toLowerCase() === "true") {
   console.log("WARNING: TLS certificate verification is disabled.");
 }
 
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
 
@@ -27,6 +41,7 @@ const { simpleParser } = require("mailparser");
 
 const MAX_EMAIL_CHARS_FOR_AI = 6000;
 const MAX_TELEGRAM_MESSAGE_CHARS = 3900;
+const DEFAULT_SAMPLE_LIMIT = 8;
 
 /* =========================
    ENV HELPERS
@@ -49,6 +64,63 @@ function optionalEnv(name, fallback = "") {
 
 function normalizeTelegramChatId(value = "") {
   return String(value).trim().replace(/^telegram:/i, "");
+}
+
+/* =========================
+   RUN GUARD / STOP MECHANISM
+========================= */
+
+function getRunGuardPath() {
+  return optionalEnv(
+    "MAIL_RUN_GUARD_PATH",
+    path.join(os.tmpdir(), "openclaw-mail-skill-run-guard.json")
+  );
+}
+
+function shouldSkipBecauseRecentlyRan(rawInput = "") {
+  const cooldownSeconds = Number(optionalEnv("MAIL_RUN_COOLDOWN_SECONDS", "30"));
+
+  if (!Number.isFinite(cooldownSeconds) || cooldownSeconds <= 0) {
+    return false;
+  }
+
+  const guardPath = getRunGuardPath();
+  const now = Date.now();
+
+  try {
+    if (fs.existsSync(guardPath)) {
+      const previous = JSON.parse(fs.readFileSync(guardPath, "utf8"));
+      const previousStartedAt = Number(previous.startedAt || 0);
+      const ageMs = now - previousStartedAt;
+
+      if (ageMs >= 0 && ageMs < cooldownSeconds * 1000) {
+        console.log(
+          `STOP: Another mail run happened ${Math.round(
+            ageMs / 1000
+          )}s ago. Cooldown=${cooldownSeconds}s. Skip to prevent retry loop.`
+        );
+        return true;
+      }
+    }
+
+    fs.writeFileSync(
+      guardPath,
+      JSON.stringify(
+        {
+          startedAt: now,
+          pid: process.pid,
+          rawInput,
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+  } catch (err) {
+    console.log("Run guard warning:", err.message);
+  }
+
+  return false;
 }
 
 /* =========================
@@ -161,6 +233,20 @@ function formatDateForImap(date) {
   return `${date.getDate()}-${months[date.getMonth()]}-${date.getFullYear()}`;
 }
 
+function subtractDaysForImap(days) {
+  const safeDays = Number(days);
+
+  if (!Number.isFinite(safeDays) || safeDays <= 0) {
+    return null;
+  }
+
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - safeDays);
+
+  return formatDateForImap(date);
+}
+
 function toImapDate(dateStr) {
   if (!dateStr) return null;
 
@@ -170,7 +256,9 @@ function toImapDate(dateStr) {
     return raw.replace(
       /^(\d{1,2})-([a-z]{3})-(\d{4})$/i,
       (_, day, mon, year) =>
-        `${Number(day)}-${mon.charAt(0).toUpperCase()}${mon.slice(1).toLowerCase()}-${year}`
+        `${Number(day)}-${mon.charAt(0).toUpperCase()}${mon
+          .slice(1)
+          .toLowerCase()}-${year}`
     );
   }
 
@@ -195,6 +283,198 @@ function toImapDate(dateStr) {
   return formatDateForImap(d);
 }
 
+function cleanKeyword(value = "") {
+  return String(value)
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/[.,?!;:]+$/g, "")
+    .trim();
+}
+
+function extractRelativeSinceDate(input = "") {
+  const text = String(input || "");
+
+  const patterns = [
+    /\bnewer_than:(\d+)([dmy])\b/i,
+    /\blast:(\d+)([dmy]?)\b/i,
+    /\bdays:(\d+)\b/i,
+    /last\s+(\d+)\s+days?/i,
+    /(?:trong\s+vòng|trong|vòng)\s+(\d+)\s+ngày/i,
+    /(\d+)\s+ngày\s+(?:gần nhất|qua|vừa qua|trước)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (!match) continue;
+
+    const value = Number(match[1]);
+    const unit = match[2] || "d";
+
+    if (!Number.isFinite(value) || value <= 0) {
+      return null;
+    }
+
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+
+    if (unit.toLowerCase() === "d") {
+      date.setDate(date.getDate() - value);
+    } else if (unit.toLowerCase() === "m") {
+      date.setMonth(date.getMonth() - value);
+    } else if (unit.toLowerCase() === "y") {
+      date.setFullYear(date.getFullYear() - value);
+    }
+
+    return formatDateForImap(date);
+  }
+
+  return null;
+}
+
+function hasCountIntent(input = "") {
+  return /\b(count|how many|total|thống kê|thong ke|tổng hợp|tong hop|bao nhiêu|bao nhieu|đếm|dem|số lượng|so luong)\b/i.test(
+    input
+  );
+}
+
+function extractExplicitKeyword(input = "") {
+  const text = String(input || "");
+
+  const subjectMatch =
+    text.match(/\bsubject:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\btitle:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\btiêu_đề:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\btieu_de:("[^"]+"|'[^']+'|[^\s]+)/i);
+
+  if (subjectMatch) {
+    return {
+      field: "subject",
+      keyword: cleanKeyword(subjectMatch[1]),
+    };
+  }
+
+  const bodyMatch =
+    text.match(/\bbody:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\bcontent:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\bnoi_dung:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\bnội_dung:("[^"]+"|'[^']+'|[^\s]+)/i);
+
+  if (bodyMatch) {
+    return {
+      field: "body",
+      keyword: cleanKeyword(bodyMatch[1]),
+    };
+  }
+
+  const textMatch =
+    text.match(/\btext:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\bkeyword:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\bkw:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\btừ_khóa:("[^"]+"|'[^']+'|[^\s]+)/i) ||
+    text.match(/\btu_khoa:("[^"]+"|'[^']+'|[^\s]+)/i);
+
+  if (textMatch) {
+    return {
+      field: "text",
+      keyword: cleanKeyword(textMatch[1]),
+    };
+  }
+
+  return null;
+}
+
+function extractKeywordFromNaturalText(input = "") {
+  const original = String(input || "").trim();
+
+  const mentionedMatch = original.match(
+    /(?:đề cập|de cap|chứa|chua|liên quan đến|lien quan den|về|ve|keyword|từ khóa|tu khoa)\s+["']?([A-Za-z0-9_.+\-# ]{2,60})["']?/i
+  );
+
+  if (mentionedMatch) {
+    const candidate = cleanKeyword(
+      mentionedMatch[1]
+        .replace(/\b(không|khong|ko|chưa|chua|nhỉ|nhi|ạ|a)\b.*$/i, "")
+        .trim()
+    );
+
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const upperTokens = original.match(/\b[A-Z0-9]{2,}\b/g);
+  if (upperTokens && upperTokens.length) {
+    const ignored = new Set(["ALL", "UNSEEN", "FROM", "SINCE", "BEFORE", "TEXT"]);
+    const token = upperTokens.find((item) => !ignored.has(item.toUpperCase()));
+
+    if (token) {
+      return token;
+    }
+  }
+
+  let text = original;
+
+  text = text
+    .replace(/\bfrom:[^\s]+/gi, "")
+    .replace(/\bsender:[^\s]+/gi, "")
+    .replace(/\bsince:[^\s]+/gi, "")
+    .replace(/\bafter:[^\s]+/gi, "")
+    .replace(/\bbefore:[^\s]+/gi, "")
+    .replace(/\bto:[^\s]+/gi, "")
+    .replace(/\btu:[^\s]+/gi, "")
+    .replace(/\btừ:[^\s]+/gi, "")
+    .replace(/\bden:[^\s]+/gi, "")
+    .replace(/\bđến:[^\s]+/gi, "")
+    .replace(/\bnewer_than:\d+[dmy]\b/gi, "")
+    .replace(/\bolder_than:\d+[dmy]\b/gi, "")
+    .replace(/\blast:\d+[dmy]?\b/gi, "")
+    .replace(/\bdays:\d+\b/gi, "")
+    .replace(/\bsubject:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\btitle:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\bbody:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\bcontent:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\btext:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\bkeyword:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\bkw:("[^"]+"|'[^']+'|[^\s]+)/gi, "")
+    .replace(/\bunread\b/gi, "")
+    .replace(/\bunseen\b/gi, "")
+    .replace(/\blatest\b/gi, "")
+    .replace(/\bnewest\b/gi, "")
+    .replace(/\bearliest\b/gi, "")
+    .replace(/\boldest\b/gi, "")
+    .replace(/\bmới nhất\b/gi, "")
+    .replace(/\bmoi nhat\b/gi, "")
+    .replace(/\bsớm nhất\b/gi, "")
+    .replace(/\bsom nhat\b/gi, "")
+    .replace(/\bchưa đọc\b/gi, "")
+    .replace(/\bchua doc\b/gi, "")
+    .replace(/\bcount\b/gi, "")
+    .replace(/\btổng hợp\b/gi, "")
+    .replace(/\btong hop\b/gi, "")
+    .replace(/\bbao nhiêu\b/gi, "")
+    .replace(/\bbao nhieu\b/gi, "")
+    .replace(/\bthống kê\b/gi, "")
+    .replace(/\bthong ke\b/gi, "")
+    .replace(/(?:trong\s+vòng|trong|vòng)\s+\d+\s+ngày/gi, "")
+    .replace(/\d+\s+ngày\s+(?:gần nhất|qua|vừa qua|trước)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  text = cleanKeyword(text);
+
+  if (!text) {
+    return null;
+  }
+
+  // Tránh lấy cả câu tiếng Việt quá dài làm keyword.
+  if (text.length > 60) {
+    return null;
+  }
+
+  return text;
+}
+
 function parseFilter(input = "") {
   const cleanedInput = stripKnownCommand(input);
 
@@ -205,8 +485,15 @@ function parseFilter(input = "") {
     beforeDate: null,
     unreadOnly: false,
 
-    // Quan trọng: mặc định lấy mail mới nhất, không lấy mail cũ nhất nữa.
+    // Giữ behavior mới: mặc định lấy mail mới nhất.
     mode: "latest",
+
+    // NEW: keyword search
+    searchField: null, // subject | body | text
+    keyword: null,
+
+    // NEW: count/summary mode
+    action: hasCountIntent(cleanedInput) ? "count" : "single",
   };
 
   const fromMatch =
@@ -230,7 +517,15 @@ function parseFilter(input = "") {
   }
 
   if (sinceMatch) {
-    filter.sinceDate = toImapDate(sinceMatch[1]);
+    if (/^\d+[dmy]$/i.test(sinceMatch[1])) {
+      filter.sinceDate = extractRelativeSinceDate(cleanedInput);
+    } else {
+      filter.sinceDate = toImapDate(sinceMatch[1]);
+    }
+  }
+
+  if (!filter.sinceDate) {
+    filter.sinceDate = extractRelativeSinceDate(cleanedInput);
   }
 
   if (beforeMatch) {
@@ -249,6 +544,23 @@ function parseFilter(input = "") {
     filter.mode = "earliest";
   }
 
+  const explicitKeyword = extractExplicitKeyword(cleanedInput);
+
+  if (explicitKeyword?.keyword) {
+    filter.searchField = explicitKeyword.field;
+    filter.keyword = explicitKeyword.keyword;
+  } else {
+    const naturalKeyword = extractKeywordFromNaturalText(cleanedInput);
+
+    if (naturalKeyword) {
+      // Mặc định keyword tự do sẽ tìm trong subject.
+      // Ví dụ: "Figma since:2026-05-27" -> SUBJECT Figma
+      // Nếu muốn tìm cả subject + body thì dùng text:Figma
+      filter.searchField = "subject";
+      filter.keyword = naturalKeyword;
+    }
+  }
+
   return filter;
 }
 
@@ -257,12 +569,12 @@ function buildSearchCriteria(filter) {
     Boolean(filter.sender) ||
     Boolean(filter.sinceDate) ||
     Boolean(filter.beforeDate) ||
-    Boolean(filter.unreadOnly);
+    Boolean(filter.unreadOnly) ||
+    Boolean(filter.keyword);
 
   const criteria = [];
 
   // Nếu không truyền gì, mặc định lấy email chưa đọc.
-  // Ví dụ: node index.js → search UNSEEN và lấy mail mới nhất.
   if (!hasAnyExplicitFilter || filter.unreadOnly) {
     criteria.push("UNSEEN");
   } else {
@@ -279,6 +591,16 @@ function buildSearchCriteria(filter) {
 
   if (filter.beforeDate) {
     criteria.push(["BEFORE", filter.beforeDate]);
+  }
+
+  if (filter.keyword) {
+    if (filter.searchField === "body") {
+      criteria.push(["BODY", filter.keyword]);
+    } else if (filter.searchField === "text") {
+      criteria.push(["TEXT", filter.keyword]);
+    } else {
+      criteria.push(["SUBJECT", filter.keyword]);
+    }
   }
 
   return criteria;
@@ -338,8 +660,6 @@ ${contentForAi}
           },
         ],
         temperature: 0.3,
-
-        // Quan trọng: tránh OpenRouter tự request max_tokens quá cao.
         max_tokens: maxTokens,
       }),
     });
@@ -381,12 +701,21 @@ function formatDate(dateValue) {
   });
 }
 
+function formatSearchInfo(filter) {
+  return [
+    `Filter: ${filter.raw || "unread"}`,
+    `Action: ${filter.action === "count" ? "đếm/tổng hợp" : "lấy 1 email"}`,
+    `Search field: ${filter.searchField || "none"}`,
+    `Keyword: ${filter.keyword || "none"}`,
+    `Mode: ${filter.mode === "latest" ? "mới nhất" : "sớm nhất"}`,
+  ].join("\n");
+}
+
 function formatEmail(email, filter) {
   return `
 📩 EMAIL MATCHED
 
-Filter: ${filter.raw || "unread"}
-Mode: ${filter.mode === "latest" ? "mới nhất" : "sớm nhất"}
+${formatSearchInfo(filter)}
 
 From: ${email.from}
 Subject: ${email.subject}
@@ -394,6 +723,29 @@ Date: ${formatDate(email.date)}
 
 Summary:
 ${email.summary}
+`.trim();
+}
+
+function formatCountResult({ total, samples, filter }) {
+  const sampleText = samples.length
+    ? samples
+        .map((email, index) => {
+          return `${index + 1}. ${formatDate(email.date)}
+From: ${email.from}
+Subject: ${email.subject}`;
+        })
+        .join("\n\n")
+    : "Không có email mẫu để hiển thị.";
+
+  return `
+📊 EMAIL COUNT RESULT
+
+${formatSearchInfo(filter)}
+
+Total matched emails: ${total}
+
+Sample emails:
+${sampleText}
 `.trim();
 }
 
@@ -455,10 +807,14 @@ function getMailSortValue(result) {
   return 0;
 }
 
-function pickTargetMail(results, mode = "latest") {
-  const sorted = [...results].sort((a, b) => {
+function sortMails(results = []) {
+  return [...results].sort((a, b) => {
     return getMailSortValue(a) - getMailSortValue(b);
   });
+}
+
+function pickTargetMail(results, mode = "latest") {
+  const sorted = sortMails(results);
 
   if (mode === "earliest") {
     return sorted[0];
@@ -467,12 +823,63 @@ function pickTargetMail(results, mode = "latest") {
   return sorted[sorted.length - 1];
 }
 
+function pickSampleMails(results, mode = "latest", limit = DEFAULT_SAMPLE_LIMIT) {
+  const sorted = sortMails(results);
+
+  if (mode === "earliest") {
+    return sorted.slice(0, limit);
+  }
+
+  return sorted.slice(-limit).reverse();
+}
+
 function extractRawEmail(result) {
   const rawPart =
     result?.parts?.find((p) => p.which === "") ||
     result?.parts?.find((p) => p.body);
 
   return rawPart?.body || "";
+}
+
+async function parseEmailFromResult(result) {
+  const raw = extractRawEmail(result);
+
+  if (!raw) {
+    return {
+      from: "unknown",
+      subject: "(cannot read raw email)",
+      date: "",
+      text: "",
+    };
+  }
+
+  const parsed = await simpleParser(raw);
+
+  return {
+    from: parsed.from?.text || "unknown",
+    subject: parsed.subject || "(no subject)",
+    date: parsed.date || "",
+    text: getCleanEmailText(parsed),
+  };
+}
+
+async function buildCountSamples(results, filter) {
+  const sampleLimit = Number(optionalEnv("MAIL_SAMPLE_LIMIT", String(DEFAULT_SAMPLE_LIMIT)));
+  const safeLimit = Number.isFinite(sampleLimit) && sampleLimit > 0 ? sampleLimit : DEFAULT_SAMPLE_LIMIT;
+
+  const sampleMails = pickSampleMails(results, filter.mode, safeLimit);
+  const samples = [];
+
+  for (const item of sampleMails) {
+    const parsed = await parseEmailFromResult(item);
+    samples.push({
+      from: parsed.from,
+      subject: parsed.subject,
+      date: parsed.date,
+    });
+  }
+
+  return samples;
 }
 
 /* =========================
@@ -484,6 +891,11 @@ async function run() {
 
   try {
     const rawArg = process.argv.slice(2).join(" ").trim();
+
+    if (shouldSkipBecauseRecentlyRan(rawArg)) {
+      return;
+    }
+
     const filter = parseFilter(rawArg);
     const searchCriteria = buildSearchCriteria(filter);
 
@@ -515,21 +927,26 @@ async function run() {
     }
 
     console.log("Pick mode:", filter.mode);
+    console.log("Action:", filter.action);
 
-    const targetMail = pickTargetMail(results, filter.mode);
-    const raw = extractRawEmail(targetMail);
+    if (filter.action === "count") {
+      const samples = await buildCountSamples(results, filter);
 
-    if (!raw) {
-      const noRawMessage = "Tìm thấy email nhưng không đọc được nội dung raw email.";
-      console.log(noRawMessage);
-      await sendTelegram(noRawMessage);
+      const countMessage = formatCountResult({
+        total: results.length,
+        samples,
+        filter,
+      });
+
+      await sendTelegram(countMessage);
+      console.log("DONE");
       return;
     }
 
-    const parsed = await simpleParser(raw);
-    const cleanedText = getCleanEmailText(parsed);
+    const targetMail = pickTargetMail(results, filter.mode);
+    const parsed = await parseEmailFromResult(targetMail);
 
-    if (!cleanedText) {
+    if (!parsed.text) {
       const emptyMessage =
         "Tìm thấy email nhưng nội dung email rỗng hoặc không parse được.";
 
@@ -538,12 +955,12 @@ async function run() {
       return;
     }
 
-    const summary = await summarize(cleanedText);
+    const summary = await summarize(parsed.text);
 
     const email = {
-      from: parsed.from?.text || "unknown",
-      subject: parsed.subject || "(no subject)",
-      date: parsed.date || "",
+      from: parsed.from,
+      subject: parsed.subject,
+      date: parsed.date,
       summary,
     };
 
