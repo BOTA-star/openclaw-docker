@@ -199,11 +199,11 @@ from:abc@gmail.com
 since:2026-05-18
 before:2026-05-25
 newer_than:7d
-subject:Figma
-text:Figma
-body:Figma
-count CV newer_than:7d
-count subject:CV newer_than:7d
+subject:<keyword>
+text:<keyword>
+body:<keyword>
+count <keyword> newer_than:7d
+count subject:<keyword> newer_than:7d
 ```
 
 ## Lưu ý bảo mật
